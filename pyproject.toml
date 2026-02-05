@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mr_pocket_tts"
+version = "1.0.0"
+description = "MindRoot TTS plugin using Pocket-TTS locally"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pocket-tts>=1.0.0",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "scipy>=1.10.0",
+    "numpy>=1.24.0",
+    "soundfile>=0.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

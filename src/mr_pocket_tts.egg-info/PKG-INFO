@@ -1,0 +1,145 @@
+Metadata-Version: 2.4
+Name: mr_pocket_tts
+Version: 1.0.0
+Summary: MindRoot TTS plugin using Pocket-TTS locally
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: pocket-tts>=1.0.0
+Requires-Dist: torch>=2.0.0
+Requires-Dist: torchaudio>=2.0.0
+Requires-Dist: scipy>=1.10.0
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: soundfile>=0.12.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+
+# MindRoot Pocket-TTS Plugin
+
+A drop-in replacement for `mr_eleven_stream` that uses [Pocket-TTS](https://github.com/teddybear082/pocket-tts-openai_streaming_server) locally instead of the ElevenLabs API.
+
+## Features
+
+- **Local TTS**: Runs entirely on your machine, no API calls needed
+- **Streaming Support**: Real-time audio streaming for low latency
+- **SIP Compatible**: Outputs ulaw 8kHz audio for telephony integration
+- **Voice Cloning**: Use custom voice files or built-in voices
+- **CPU Friendly**: Works on CPU (GPU optional for faster inference)
+
+## Installation
+
+```bash
+cd /xfiles/plugins_ah/mr_pocket_tts
+pip install -e .
+```
+
+Or install dependencies manually:
+
+```bash
+pip install pocket-tts torch torchaudio scipy numpy soundfile
+```
+
+## Configuration
+
+Environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MR_POCKET_TTS_VOICE` | Default voice to use | `alba` |
+| `MR_POCKET_TTS_MODEL_PATH` | Path to model file (optional) | Auto-download from HuggingFace |
+| `MR_POCKET_TTS_VOICES_DIR` | Directory containing custom voice files | None |
+
+## Built-in Voices
+
+Pocket-TTS includes these built-in voices:
+- `alba`
+- `marius`
+- `javert`
+- `jean`
+- `fantine`
+- `cosette`
+- `eponine`
+- `azelma`
+
+## Custom Voices
+
+You can use custom voice files by:
+
+1. Setting `MR_POCKET_TTS_VOICES_DIR` to a directory containing `.wav`, `.mp3`, or `.flac` files
+2. Using a HuggingFace URL: `hf://username/repo/path/to/voice.wav`
+3. Using an absolute file path
+
+## Usage
+
+### As a Service
+
+```python
+from lib.providers.services import service_manager
+
+# Stream TTS audio
+async for chunk in service_manager.stream_tts("Hello, world!", voice_id="alba"):
+    # chunk is ulaw 8kHz bytes
+    await send_to_phone(chunk)
+```
+
+### As a Command
+
+```json
+{ "speak": { "text": "Hello, this is a test message" } }
+{ "speak": { "text": "Custom voice", "voice_id": "marius" } }
+```
+
+## Agent Persona Integration
+
+Set the `voice_id` in your agent's persona to automatically use that voice:
+
+```json
+{
+  "persona": {
+    "voice_id": "alba"
+  }
+}
+```
+
+## Comparison with mr_eleven_stream
+
+| Feature | mr_pocket_tts | mr_eleven_stream |
+|---------|---------------|------------------|
+| API Required | No | Yes (ElevenLabs) |
+| Cost | Free | Per-character |
+| Latency | Local processing | Network + API |
+| Voice Quality | Good | Excellent |
+| Custom Voices | File-based | ElevenLabs voices |
+| Offline | Yes | No |
+
+## Technical Details
+
+- **Input**: Text string
+- **Output**: ulaw 8kHz mono audio (for SIP compatibility)
+- **Native Sample Rate**: 24kHz (Pocket-TTS)
+- **Conversion**: Automatic resampling and ulaw encoding
+
+## Troubleshooting
+
+### Model Download
+
+On first run, the model will be downloaded from HuggingFace. This may take a few minutes.
+
+### CUDA/GPU
+
+If you have a CUDA-capable GPU, Pocket-TTS will automatically use it. For CPU-only:
+
+```bash
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+```
+
+### Audio Playback
+
+For local testing without SIP, install `ffplay` (part of FFmpeg):
+
+```bash
+# Ubuntu/Debian
+apt install ffmpeg
+
+# macOS
+brew install ffmpeg
+```
