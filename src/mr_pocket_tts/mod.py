@@ -1,6 +1,7 @@
 """
 MindRoot Pocket-TTS Plugin
 
+DEBUG_MODE: Enabled - will exit on errors for debugging
 Provides local TTS using Pocket-TTS with streaming support for SIP phone integration.
 This is a drop-in replacement for mr_eleven_stream that runs locally without API calls.
 """
@@ -10,6 +11,7 @@ import asyncio
 import io
 import subprocess
 import audioop
+import sys
 import queue
 import threading
 from typing import AsyncGenerator, Optional, Dict, Any
@@ -28,6 +30,15 @@ logger = logging.getLogger(__name__)
 
 # Debug log file
 DEBUG_LOG_FILE = "/tmp/pocket_tts_debug.log"
+
+# Force debug mode - will crash on errors
+DEBUG_CRASH_ON_ERROR = True
+
+def fatal_error(msg):
+    """Log error and exit process for debugging."""
+    print(f"\n\n*** FATAL POCKET-TTS ERROR: {msg} ***\n\n", file=sys.stderr, flush=True)
+    logger.error(f"FATAL: {msg}")
+    sys.exit(1)
 
 def debug_log(msg):
     """Write debug message to dedicated log file."""
@@ -177,10 +188,9 @@ class PocketTTSStreamer:
             logger.info(f"Pocket-TTS model loaded. Device: {self.model.device}, Sample Rate: {self.model.sample_rate}")
             
         except ImportError:
-            raise ImportError("pocket-tts not found. Install with: pip install pocket-tts")
+            fatal_error("pocket-tts not found. Install with: pip install pocket-tts")
         except Exception as e:
-            logger.error(f"Failed to load Pocket-TTS model: {e}")
-            raise
+            fatal_error(f"Failed to load Pocket-TTS model: {e}")
     
     @property
     def sample_rate(self) -> int:
@@ -191,12 +201,23 @@ class PocketTTSStreamer:
     
     def _resolve_voice_path(self, voice_id: str) -> str:
         """Resolve voice ID to actual path or built-in name."""
+        print(f"[POCKET-TTS DEBUG] _resolve_voice_path called with: {voice_id}", flush=True)
+        
+        # Check if it's an absolute path that should exist
+        if voice_id.startswith('/'):
+            if not os.path.exists(voice_id):
+                fatal_error(f"Voice file does not exist: {voice_id}")
+            print(f"[POCKET-TTS DEBUG] Using absolute path: {voice_id}", flush=True)
+            return voice_id
+        
         # Check if it's a built-in voice
         if voice_id.lower() in self.builtin_voices:
+            print(f"[POCKET-TTS DEBUG] Using built-in voice: {voice_id.lower()}", flush=True)
             return voice_id.lower()
         
         # Check if it's a HuggingFace URL
         if voice_id.startswith('hf://'):
+            print(f"[POCKET-TTS DEBUG] Using HuggingFace URL: {voice_id}", flush=True)
             return voice_id
         
         # Check voices directory
@@ -204,17 +225,16 @@ class PocketTTSStreamer:
             for ext in ('.wav', '.mp3', '.flac', '.safetensors'):
                 possible_path = os.path.join(self.voices_dir, voice_id)
                 if os.path.exists(possible_path):
+                    print(f"[POCKET-TTS DEBUG] Found in voices dir: {possible_path}", flush=True)
                     return os.path.abspath(possible_path)
                 if not voice_id.endswith(ext):
                     possible_path = os.path.join(self.voices_dir, voice_id + ext)
                     if os.path.exists(possible_path):
+                        print(f"[POCKET-TTS DEBUG] Found in voices dir with ext: {possible_path}", flush=True)
                         return os.path.abspath(possible_path)
         
-        # Check if it's an absolute path
-        if os.path.isabs(voice_id) and os.path.exists(voice_id):
-            return voice_id
-        
         # Return as-is, let pocket-tts handle it
+        print(f"[POCKET-TTS DEBUG] Returning as-is: {voice_id}", flush=True)
         return voice_id
     
     def _get_voice_state(self, voice_id: str) -> dict:
@@ -222,19 +242,24 @@ class PocketTTSStreamer:
         self._ensure_loaded()
         
         resolved = self._resolve_voice_path(voice_id)
+        print(f"[POCKET-TTS DEBUG] _get_voice_state: voice_id={voice_id}, resolved={resolved}", flush=True)
         
         if resolved in self.voice_cache:
+            print(f"[POCKET-TTS DEBUG] Using cached voice state for: {resolved}", flush=True)
             logger.debug(f"Using cached voice state for: {resolved}")
             return self.voice_cache[resolved]
         
         logger.info(f"Loading voice: {resolved}")
+        print(f"[POCKET-TTS DEBUG] Loading voice state for: {resolved}", flush=True)
         try:
             state = self.model.get_state_for_audio_prompt(resolved)
+            if state is None:
+                fatal_error(f"Voice state is None for '{voice_id}' (resolved: {resolved})")
+            print(f"[POCKET-TTS DEBUG] Voice state loaded successfully", flush=True)
             self.voice_cache[resolved] = state
             return state
         except Exception as e:
-            logger.error(f"Failed to load voice '{voice_id}': {e}")
-            raise ValueError(f"Voice '{voice_id}' could not be loaded: {e}")
+            fatal_error(f"Failed to load voice '{voice_id}' (resolved: {resolved}): {e}")
     
     async def stream_text_to_speech(
         self,
@@ -253,6 +278,7 @@ class PocketTTSStreamer:
             bytes: Audio chunks as ulaw 8kHz for SIP compatibility
         """
         try:
+            print(f"[POCKET-TTS DEBUG] stream_text_to_speech: text={text[:50]}..., voice_id={voice_id}", flush=True)
             logger.info(f"Starting TTS stream for text: {text[:50]}...")
             
             # Check if SIP is available
@@ -269,16 +295,22 @@ class PocketTTSStreamer:
             
             # Use a queue for true streaming between threads
             chunk_queue = queue.Queue(maxsize=10)  # Small buffer for backpressure
+            generation_error = [None]  # Use list to allow modification in nested function
             
             def producer():
                 """Run TTS generation in a thread, pushing chunks to queue."""
                 try:
+                    print(f"[POCKET-TTS DEBUG] Producer thread starting", flush=True)
                     for chunk_tensor in self.model.generate_audio_stream(voice_state, text):
                         # Convert immediately in the producer thread
                         ulaw_chunk = _convert_to_ulaw(chunk_tensor, self.sample_rate)
                         chunk_queue.put(ulaw_chunk)
+                        print(f"[POCKET-TTS DEBUG] Producer: queued chunk of {len(ulaw_chunk)} bytes", flush=True)
+                    print(f"[POCKET-TTS DEBUG] Producer thread finished normally", flush=True)
                 except Exception as e:
+                    print(f"[POCKET-TTS DEBUG] Producer thread error: {e}", flush=True)
                     logger.error(f"TTS producer error: {e}")
+                    generation_error[0] = e
                 finally:
                     chunk_queue.put(_END_OF_STREAM)
             
@@ -310,7 +342,15 @@ class PocketTTSStreamer:
                 
                 yield chunk
             
+            # Check if there was an error in generation
+            if generation_error[0] is not None:
+                fatal_error(f"TTS generation failed: {generation_error[0]}")
+            
+            print(f"[POCKET-TTS DEBUG] TTS streaming completed. Total chunks: {chunk_count}", flush=True)
             logger.info(f"TTS streaming completed. Total chunks: {chunk_count}")
+            
+            if chunk_count == 0:
+                fatal_error("TTS generated 0 audio chunks - something is wrong!")
             
             # Play locally if enabled
             if self.local_playback_enabled and local_audio_buffer:
@@ -323,8 +363,7 @@ class PocketTTSStreamer:
                 )
             
         except Exception as e:
-            logger.error(f"Error in TTS streaming: {str(e)}")
-            raise
+            fatal_error(f"Error in TTS streaming: {str(e)}")
 
 
 # Global streamer instance
@@ -374,6 +413,7 @@ async def stream_tts(
         
         voice_id = voice_id or DEFAULT_VOICE
         
+        print(f"[POCKET-TTS DEBUG] stream_tts service: voice_id={voice_id}", flush=True)
         logger.info(f"Starting TTS service for text: {text[:50]}...")
         
         async for chunk in streamer.stream_text_to_speech(
@@ -384,8 +424,7 @@ async def stream_tts(
             yield chunk
             
     except Exception as e:
-        logger.error(f"Error in stream_tts service: {str(e)}")
-        raise
+        fatal_error(f"Error in stream_tts service: {str(e)}")
 
 
 @command()
@@ -418,6 +457,8 @@ async def speak(
         MR_POCKET_TTS_VOICES_DIR: Directory containing custom voice files
     """
     voiceid = voice_id or DEFAULT_VOICE
+    print(f"[POCKET-TTS DEBUG] speak() called: text={text[:50]}..., voice_id={voice_id}", flush=True)
+    
     try:
         # Get log_id from context for lock management
         log_id = None
@@ -446,16 +487,22 @@ async def speak(
             persona = agent_data["persona"]
             persona_voice = persona.get("voice_id", DEFAULT_VOICE)
             
+            print(f"[POCKET-TTS DEBUG] Got persona voice_id: {persona_voice}", flush=True)
+            
             # Check if voice_id looks like an ElevenLabs ID (not valid for Pocket-TTS)
             # ElevenLabs IDs are typically 20+ character alphanumeric strings
             if persona_voice and len(persona_voice) > 15 and persona_voice.isalnum():
+                print(f"[POCKET-TTS DEBUG] Detected ElevenLabs ID, using default: {DEFAULT_VOICE}", flush=True)
                 logger.warning(f"Persona voice_id '{persona_voice}' appears to be an ElevenLabs ID, using default voice.")
                 voiceid = DEFAULT_VOICE
             else:
                 voiceid = persona_voice
         except Exception as e:
+            print(f"[POCKET-TTS DEBUG] Could not get persona voice_id: {e}", flush=True)
             logger.warning(f"Could not get agent persona voice_id, using default. Error: {str(e)}")
             voiceid = voice_id or DEFAULT_VOICE
+
+        print(f"[POCKET-TTS DEBUG] Final voice_id to use: {voiceid}", flush=True)
 
         # Check if audio is halted (we're in an interrupted state)
         if not local_playback:
@@ -521,12 +568,12 @@ async def speak(
             else:
                 logger.info(f"SPEAK_DEBUG: Completed {chunk_count} chunks, {pacer.bytes_sent} bytes sent")
         
+        print(f"[POCKET-TTS DEBUG] Speech completed: {len(text)} chars, {chunk_count} chunks", flush=True)
         logger.info(f"Speech streaming completed: {len(text)} characters, {chunk_count} audio chunks")
         return None
         
     except Exception as e:
-        logger.error(f"Error in speak command: {str(e)}")
-        return None
+        fatal_error(f"Error in speak command: {str(e)}")
 
     finally:
         if log_id and log_id in _active_speak_locks:
