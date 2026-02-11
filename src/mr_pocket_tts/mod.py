@@ -1,3 +1,4 @@
+import os
 """
 MindRoot Pocket-TTS Plugin
 
@@ -6,7 +7,6 @@ Provides local TTS using Pocket-TTS with streaming support for SIP phone integra
 This is a drop-in replacement for mr_eleven_stream that runs locally without API calls.
 """
 
-import os
 import asyncio
 import io
 import subprocess
@@ -25,6 +25,12 @@ from lib.providers.commands import command
 from .audio_pacer import AudioPacer
 
 import logging
+
+# Check MR_DEBUG env variable
+MR_DEBUG = os.environ.get('MR_DEBUG', '').lower() in ('1', 'true', 'yes')
+LOG_LEVEL = logging.DEBUG if MR_DEBUG else logging.WARNING
+
+logging.getLogger('mr_pocket_tts').setLevel(LOG_LEVEL)
 
 logger = logging.getLogger(__name__)
 
