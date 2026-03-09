@@ -308,7 +308,7 @@ class PocketTTSStreamer:
                 """Run TTS generation in a thread, pushing chunks to queue."""
                 try:
                     print(f"[POCKET-TTS DEBUG] Producer thread starting", flush=True)
-                    for chunk_tensor in self.model.generate_audio_stream(voice_state, text, temperature=0.6):
+                    for chunk_tensor in self.model.generate_audio_stream(voice_state, text):
                         # Convert immediately in the producer thread
                         ulaw_chunk = _convert_to_ulaw(chunk_tensor, self.sample_rate)
                         chunk_queue.put(ulaw_chunk)
