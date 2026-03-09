@@ -48,10 +48,11 @@ def fatal_error(msg):
 
 def debug_log(msg):
     """Write debug message to dedicated log file."""
-    import datetime
-    with open(DEBUG_LOG_FILE, 'a') as f:
-        f.write(f"{datetime.datetime.now().isoformat()} | {msg}\n")
-
+    # Only write to log file if MR_DEBUG is enabled
+    if MR_DEBUG:
+        import datetime
+        with open(DEBUG_LOG_FILE, 'a') as f:
+            f.write(f"{datetime.datetime.now().isoformat()} | {msg}\n")
 # Default configuration
 DEFAULT_VOICE = os.environ.get('MR_POCKET_TTS_VOICE', 'alba')
 DEFAULT_OUTPUT_FORMAT = "ulaw_8000"  # Standard for SIP/telephony
@@ -307,7 +308,7 @@ class PocketTTSStreamer:
                 """Run TTS generation in a thread, pushing chunks to queue."""
                 try:
                     print(f"[POCKET-TTS DEBUG] Producer thread starting", flush=True)
-                    for chunk_tensor in self.model.generate_audio_stream(voice_state, text):
+                    for chunk_tensor in self.model.generate_audio_stream(voice_state, text, temperature=0.6):
                         # Convert immediately in the producer thread
                         ulaw_chunk = _convert_to_ulaw(chunk_tensor, self.sample_rate)
                         chunk_queue.put(ulaw_chunk)
