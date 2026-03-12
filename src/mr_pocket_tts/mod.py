@@ -464,6 +464,7 @@ async def speak(
         MR_POCKET_TTS_VOICES_DIR: Directory containing custom voice files
     """
     voiceid = voice_id or DEFAULT_VOICE
+    text = ". " + text
     print(f"[POCKET-TTS DEBUG] speak() called: text={text[:50]}..., voice_id={voice_id}", flush=True)
     
     try:
