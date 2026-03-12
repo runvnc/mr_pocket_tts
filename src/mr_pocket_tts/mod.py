@@ -189,7 +189,7 @@ class PocketTTSStreamer:
                 self.model = TTSModel.load_model(variant=self.model_path)
             else:
                 logger.info("Loading default model from HuggingFace...")
-                self.model = TTSModel.load_model()
+                self.model = TTSModel.load_model()variant="b6369a24", temp=0.5)
             
             self._loaded = True
             logger.info(f"Pocket-TTS model loaded. Device: {self.model.device}, Sample Rate: {self.model.sample_rate}")
@@ -307,13 +307,13 @@ class PocketTTSStreamer:
             def producer():
                 """Run TTS generation in a thread, pushing chunks to queue."""
                 try:
-                    print(f"[POCKET-TTS DEBUG] Producer thread starting", flush=True)
+                    #print(f"[POCKET-TTS DEBUG] Producer thread starting", flush=True)
                     for chunk_tensor in self.model.generate_audio_stream(voice_state, text):
                         # Convert immediately in the producer thread
                         ulaw_chunk = _convert_to_ulaw(chunk_tensor, self.sample_rate)
                         chunk_queue.put(ulaw_chunk)
-                        print(f"[POCKET-TTS DEBUG] Producer: queued chunk of {len(ulaw_chunk)} bytes", flush=True)
-                    print(f"[POCKET-TTS DEBUG] Producer thread finished normally", flush=True)
+                        #print(f"[POCKET-TTS DEBUG] Producer: queued chunk of {len(ulaw_chunk)} bytes", flush=True)
+                    #print(f"[POCKET-TTS DEBUG] Producer thread finished normally", flush=True)
                 except Exception as e:
                     print(f"[POCKET-TTS DEBUG] Producer thread error: {e}", flush=True)
                     logger.error(f"TTS producer error: {e}")
