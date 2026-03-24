@@ -183,7 +183,7 @@ class PocketTTSStreamer:
             from pocket_tts import TTSModel
             
             logger.info("Loading Pocket-TTS model...")
-            voice_temp = os.environ.get("POCKET_TTS_TEMP", 0.5)
+            voice_temp = float(os.environ.get("POCKET_TTS_TEMP", 0.5))
             if self.model_path:
                 logger.info(f"Loading model from: {self.model_path}")
                 self.model = TTSModel.load_model(variant=self.model_path, temp=voice_temp)
