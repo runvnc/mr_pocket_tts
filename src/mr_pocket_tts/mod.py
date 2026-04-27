@@ -466,10 +466,11 @@ async def speak(
     voiceid = voice_id or DEFAULT_VOICE
     text = ". " + text
     print(f"[POCKET-TTS DEBUG] speak() called: text={text[:50]}..., voice_id={voice_id}", flush=True)
+    sip_response_started = False
+    log_id = None
     
     try:
         # Get log_id from context for lock management
-        log_id = None
         if context and hasattr(context, 'log_id'):
             log_id = context.log_id
         
@@ -522,6 +523,13 @@ async def speak(
             except Exception as e:
                 logger.debug(f"Could not check halt status: {e}")
         
+        if not local_playback:
+            try:
+                sip_response_started = await service_manager.sip_start_audio_response(context=context)
+                logger.debug(f"SPEAK_DEBUG: SIP audio response start={sip_response_started}")
+            except Exception as e:
+                logger.debug(f"SPEAK_DEBUG: SIP audio response start unavailable: {e}")
+
         # Use AudioPacer for proper timing when sending to SIP
         if not local_playback:
             pacer = AudioPacer(sample_rate=ULAW_SAMPLE_RATE)
@@ -584,6 +592,13 @@ async def speak(
         fatal_error(f"Error in speak command: {str(e)}")
 
     finally:
+        if sip_response_started:
+            try:
+                ended = await service_manager.sip_end_audio_response(context=context)
+                logger.debug(f"SPEAK_DEBUG: SIP audio response end={ended}")
+            except Exception as e:
+                logger.warning(f"Failed to end SIP audio response: {e}")
+
         if log_id and log_id in _active_speak_locks:
             lock = _active_speak_locks[log_id]
             if lock.locked():
