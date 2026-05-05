@@ -186,10 +186,10 @@ class PocketTTSStreamer:
             voice_temp = float(os.environ.get("POCKET_TTS_TEMP", 0.5))
             if self.model_path:
                 logger.info(f"Loading model from: {self.model_path}")
-                self.model = TTSModel.load_model(variant=self.model_path, temp=voice_temp)
+                self.model = TTSModel.load_model(language=self.model_path, temp=voice_temp)
             else:
                 logger.info("Loading default model from HuggingFace...")
-                self.model = TTSModel.load_model(variant="b6369a24", temp=voice_temp)
+                self.model = TTSModel.load_model(language="english", temp=voice_temp)
             
             self._loaded = True
             logger.info(f"Pocket-TTS model loaded. Device: {self.model.device}, Sample Rate: {self.model.sample_rate}")
